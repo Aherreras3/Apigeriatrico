@@ -119,7 +119,7 @@ exports.me = async (req, res) => {
 
     const u = rows[0];
     const firstName = (u.nombres || '').trim().split(/\s+/)[0] || '';
-    the firstLast = (u.apellidos || '').trim().split(/\s+/)[0] || '';
+    const firstLast = (u.apellidos || '').trim().split(/\s+/)[0] || '';
     const shortName = `${firstName} ${firstLast}`.trim();
 
     let roleLabel = '—';
