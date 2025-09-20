@@ -5,18 +5,33 @@ const bcrypt = require('bcryptjs');
 const { handlePgError } = require('../utils/handle-error');
 const { mapPgError } = require('../utils/pg-errors');
 
+// Detecta entorno
+const isProd = process.env.NODE_ENV === 'production';
+
+// Nombre de cookie por defecto (se puede sobreescribir desde authController si lo tienes así)
 let COOKIE_NAME = 'token';
-let COOKIE_OPTS = { httpOnly: true, sameSite: 'lax', secure: false, path: '/' };
+
+// Opciones base de cookie (ajustadas por entorno)
+let COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: isProd ? 'none' : 'lax', // en prod: cross-site requiere None
+  secure:   isProd ? true   : false, // en prod: HTTPS obligatorio
+  path: '/'
+  // maxAge se setea al momento de crear la cookie
+};
+
+// Permitir override desde otro controlador si lo usas
 try {
   const fromAuth = require('./authController');
   if (fromAuth.COOKIE_NAME) COOKIE_NAME = fromAuth.COOKIE_NAME;
   if (fromAuth.COOKIE_OPTS) Object.assign(COOKIE_OPTS, fromAuth.COOKIE_OPTS);
-} catch (_) {}
+} catch (_) { /* noop */ }
 
+// Utilidad: detectar hash bcrypt
 const isBcrypt = (s) => typeof s === 'string' && /^\$2[aby]\$/.test(s);
 
 /* =========================
-   LOGIN (SIN CAMBIOS)
+   LOGIN (SIN CAMBIOS EN TU LÓGICA)
 ========================== */
 exports.loginUser = async (req, res) => {
   const { usuario, correo, password, contrasena } = req.body;
@@ -72,6 +87,8 @@ exports.loginUser = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
+
+    // 🍪 Cookie de sesión con opciones dependientes del entorno
     res.cookie(COOKIE_NAME, token, { ...COOKIE_OPTS, maxAge: 12 * 60 * 60 * 1000 });
 
     return res.json({
