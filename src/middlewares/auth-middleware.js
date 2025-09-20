@@ -11,7 +11,7 @@ function getTokenFromReq(req) {
   // 1) Cookies (requiere app.use(cookieParser()) previamente)
   const candidates = [
     process.env.AUTH_COOKIE_NAME || 'token',
-    'myTokenName', // por compatibilidad si alguna parte del código lo usa
+    'myTokenName', // compatibilidad si alguna parte del código lo usa
   ];
   if (req.cookies) {
     for (const name of candidates) {

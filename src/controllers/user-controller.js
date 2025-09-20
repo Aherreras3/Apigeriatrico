@@ -1,4 +1,4 @@
-// controllers/user-controller.js
+// src/controllers/user-controller.js
 const pool = require('../db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -22,7 +22,7 @@ let COOKIE_OPTS = {
 
 // Permitir override desde otro controlador si lo usas
 try {
-  const fromAuth = require('./authController');
+  const fromAuth = require('./authController'); // opcional
   if (fromAuth.COOKIE_NAME) COOKIE_NAME = fromAuth.COOKIE_NAME;
   if (fromAuth.COOKIE_OPTS) Object.assign(COOKIE_OPTS, fromAuth.COOKIE_OPTS);
 } catch (_) { /* noop */ }
@@ -119,7 +119,7 @@ exports.me = async (req, res) => {
 
     const u = rows[0];
     const firstName = (u.nombres || '').trim().split(/\s+/)[0] || '';
-    const firstLast = (u.apellidos || '').trim().split(/\s+/)[0] || '';
+    the firstLast = (u.apellidos || '').trim().split(/\s+/)[0] || '';
     const shortName = `${firstName} ${firstLast}`.trim();
 
     let roleLabel = '—';
