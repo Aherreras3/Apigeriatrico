@@ -5,7 +5,7 @@
   "type": "commonjs",
   "engines": { "node": "20.x" },
   "scripts": {
-    "start": "src/index.js",
+    "start": "node src/index.js",
     "build": "echo \"no build step\"",
     "dev": "nodemon src/index.js"
   },
