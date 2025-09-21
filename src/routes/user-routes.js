@@ -4,7 +4,7 @@ const router = express.Router();
 
 const requireGeriatrico = require('../middlewares/tenant');
 const verificarToken = require('../middlewares/auth-middleware');
-const { COOKIE_NAME, COOKIE_OPTS } = require('../config/cookies');
+const { COOKIE_NAME, COOKIE_OPTS } = require('../../config/cookies');
 
 const {
   loginUser,

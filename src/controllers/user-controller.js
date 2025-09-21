@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { handlePgError } = require('../utils/handle-error');
 const { mapPgError } = require('../utils/pg-errors');
-const { COOKIE_NAME, COOKIE_OPTS } = require('../config/cookies');
+const { COOKIE_NAME, COOKIE_OPTS } = require('../../config/cookies');
 
 const isBcrypt = (s) => typeof s === 'string' && /^\$2[aby]\$/.test(s);
 

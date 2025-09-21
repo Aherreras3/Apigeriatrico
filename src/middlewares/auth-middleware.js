@@ -1,6 +1,6 @@
 // middlewares/auth-middleware.js
 const jwt = require('jsonwebtoken');
-const { COOKIE_NAME } = require('../config/cookies');
+const { COOKIE_NAME } = require('../../config/cookies');
 
 function verificarToken(req, res, next) {
   // 1) Cookie (web: fetch(..., { credentials:'include' }))
