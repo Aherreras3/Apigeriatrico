@@ -14,7 +14,7 @@ app.set('trust proxy', 1);
 // Middlewares
 app.use(cookieParser());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'],
+  origin: true,
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
