@@ -4,6 +4,7 @@ const router = express.Router();
 
 const requireGeriatrico = require('../middlewares/tenant');
 const verificarToken = require('../middlewares/auth-middleware');
+const { COOKIE_NAME, COOKIE_OPTS } = require('../config/cookies');
 
 const {
   loginUser,
@@ -21,7 +22,8 @@ const {
 router.post('/login', loginUser);
 
 router.post('/logout', (_req, res) => {
-  res.clearCookie('token', { httpOnly: true, sameSite: 'lax', secure: false });
+  // Importante: usar mismas opciones que al setear
+  res.clearCookie(COOKIE_NAME, { ...COOKIE_OPTS });
   res.json({ ok: true });
 });
 
@@ -43,7 +45,7 @@ router.put('/:id', verificarToken, requireGeriatrico, editarUsuario);
 router.delete('/:id', verificarToken, requireGeriatrico, desactivarUsuario);
 router.patch('/:id/reactivar', verificarToken, requireGeriatrico, reactivarUsuario);
 
-/* Ruta protegida de ejemplo (sigue existiendo) */
+/* Ruta protegida de ejemplo */
 router.get('/protegido', verificarToken, (req, res) => {
   res.json({ mensaje: 'Acceso permitido a la ruta protegida', usuario: req.user });
 });

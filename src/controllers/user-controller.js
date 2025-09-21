@@ -4,19 +4,12 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { handlePgError } = require('../utils/handle-error');
 const { mapPgError } = require('../utils/pg-errors');
-
-let COOKIE_NAME = 'token';
-let COOKIE_OPTS = { httpOnly: true, sameSite: 'lax', secure: false, path: '/' };
-try {
-  const fromAuth = require('./authController');
-  if (fromAuth.COOKIE_NAME) COOKIE_NAME = fromAuth.COOKIE_NAME;
-  if (fromAuth.COOKIE_OPTS) Object.assign(COOKIE_OPTS, fromAuth.COOKIE_OPTS);
-} catch (_) {}
+const { COOKIE_NAME, COOKIE_OPTS } = require('../config/cookies');
 
 const isBcrypt = (s) => typeof s === 'string' && /^\$2[aby]\$/.test(s);
 
 /* =========================
-   LOGIN (SIN CAMBIOS)
+   LOGIN
 ========================== */
 exports.loginUser = async (req, res) => {
   const { usuario, correo, password, contrasena } = req.body;
@@ -26,11 +19,14 @@ exports.loginUser = async (req, res) => {
   if (!loginId || !passPlain) {
     return res.status(400).json({ mensaje: 'Usuario/correo y contraseña son requeridos' });
   }
+  if (!process.env.JWT_SECRET) {
+    return res.status(500).json({ mensaje: 'JWT_SECRET no configurado' });
+  }
 
   try {
     const result = await pool.query(
       `SELECT u.*
-         FROM usuario u
+         FROM public.usuario u
         WHERE LOWER(u.usuario) = $1 OR LOWER(u.correo) = $1
         LIMIT 1`,
       [loginId]
@@ -48,7 +44,7 @@ exports.loginUser = async (req, res) => {
       ok = passPlain === user.contrasena;
       if (ok) {
         const newHash = await bcrypt.hash(passPlain, 10);
-        await pool.query('UPDATE usuario SET contrasena = $1 WHERE id_usuario = $2', [newHash, user.id_usuario]);
+        await pool.query('UPDATE public.usuario SET contrasena = $1 WHERE id_usuario = $2', [newHash, user.id_usuario]);
         user.contrasena = newHash;
       }
     }
@@ -56,8 +52,8 @@ exports.loginUser = async (req, res) => {
 
     const gs = await pool.query(
       `SELECT g.id_geriatrico, g.nombre, gu.rol, gu.activo
-         FROM geriatrico_usuario gu
-         JOIN geriatrico g ON g.id_geriatrico = gu.id_geriatrico
+         FROM public.geriatrico_usuario gu
+         JOIN public.geriatrico g ON g.id_geriatrico = gu.id_geriatrico
         WHERE gu.id_usuario = $1
         ORDER BY g.nombre`,
       [user.id_usuario]
@@ -72,7 +68,8 @@ exports.loginUser = async (req, res) => {
       process.env.JWT_SECRET,
       { expiresIn: '12h' }
     );
-    res.cookie(COOKIE_NAME, token, { ...COOKIE_OPTS, maxAge: 12 * 60 * 60 * 1000 });
+
+    res.cookie(COOKIE_NAME, token, COOKIE_OPTS);
 
     return res.json({
       token,
@@ -86,14 +83,14 @@ exports.loginUser = async (req, res) => {
 };
 
 /* =========================
-   PERFIL / QUIÉN SOY (SIN CAMBIOS)
+   PERFIL / QUIÉN SOY
 ========================== */
 exports.me = async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id_usuario, u.usuario, u.correo, u.is_superadmin, p.nombres, p.apellidos
-         FROM usuario u
-         JOIN persona p ON p.id_persona = u.id_persona
+         FROM public.usuario u
+         JOIN public.persona p ON p.id_persona = u.id_persona
         WHERE u.id_usuario = $1
         LIMIT 1`,
       [req.user.id]
@@ -113,8 +110,8 @@ exports.me = async (req, res) => {
     } else {
       const gs = await pool.query(
         `SELECT g.id_geriatrico, g.nombre, gu.rol, gu.activo
-           FROM geriatrico_usuario gu
-           JOIN geriatrico g ON g.id_geriatrico = gu.id_geriatrico
+           FROM public.geriatrico_usuario gu
+           JOIN public.geriatrico g ON g.id_geriatrico = gu.id_geriatrico
           WHERE gu.id_usuario = $1
           ORDER BY g.nombre`,
         [u.id_usuario]
@@ -178,8 +175,7 @@ exports.obtenerUsuarios = async (req, res) => {
 };
 
 /* =========================
-   CREAR (sin tocar tu función)
-   - Si hay duplicado y está INACTIVO => 409 con { reactivable:true, id_usuario }
+   CREAR
 ========================== */
 const validateIdentificacion = (tipo, identificacion) => {
   if (tipo === 'CEDULA') {
@@ -200,10 +196,8 @@ exports.crearUsuario = async (req, res) => {
     is_superadmin = false, rol = null, estado
   } = req.body;
 
-  const identificacionError = validateIdentificacion(tipo_identificacion, identificacion);
-  if (identificacionError) {
-    return res.status(400).json({ error: identificacionError });
-  }
+  const identificacionError = validateIdentificacion((tipo_identificacion || '').toUpperCase(), identificacion);
+  if (identificacionError) return res.status(400).json({ error: identificacionError });
   if (!usuario || !correo || !contrasena) {
     return res.status(400).json({ error: 'usuario, correo y contrasena son requeridos' });
   }
@@ -246,8 +240,8 @@ exports.crearUsuario = async (req, res) => {
     if (err?.code === '23505') {
       const q = await pool.query(
         `SELECT u.id_usuario, u.estado
-           FROM usuario u
-           JOIN persona p ON p.id_persona = u.id_persona
+           FROM public.usuario u
+           JOIN public.persona p ON p.id_persona = u.id_persona
           WHERE LOWER(u.usuario) = LOWER($1)
              OR LOWER(u.correo)  = LOWER($2)
              OR (UPPER(p.tipo_identificacion) = UPPER($3) AND p.identificacion = $4)
@@ -270,7 +264,7 @@ exports.crearUsuario = async (req, res) => {
 };
 
 /* =========================
-   EDITAR (datos básicos + estado opcional)
+   EDITAR / DESACTIVAR / REACTIVAR / PASS (igual a tu versión)
 ========================== */
 exports.editarUsuario = async (req, res) => {
   const id = parseInt(req.params.id, 10);
@@ -283,16 +277,16 @@ exports.editarUsuario = async (req, res) => {
 
   try {
     await pool.query(
-      `UPDATE persona
+      `UPDATE public.persona
           SET nombres = $1, apellidos = $2,
               tipo_identificacion = $3, identificacion = $4,
               fecha_nacimiento = $5, sexo = $6
-        WHERE id_persona = (SELECT id_persona FROM usuario WHERE id_usuario = $7)`,
+        WHERE id_persona = (SELECT id_persona FROM public.usuario WHERE id_usuario = $7)`,
       [nombres, apellidos, (tipo_identificacion||'').toUpperCase(), identificacion, fecha_nacimiento, sexo, id]
     );
 
     await pool.query(
-      `UPDATE usuario
+      `UPDATE public.usuario
           SET usuario = $1, correo = $2, estado = COALESCE($3, estado)
         WHERE id_usuario = $4`,
       [usuario, correo, estado, id]
@@ -307,9 +301,6 @@ exports.editarUsuario = async (req, res) => {
   }
 };
 
-/* =========================
-   DESACTIVAR (soft delete)
-========================== */
 exports.desactivarUsuario = async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const idG = req.geriatricoId;
@@ -323,9 +314,6 @@ exports.desactivarUsuario = async (req, res) => {
   }
 };
 
-/* =========================
-   REACTIVAR
-========================== */
 exports.reactivarUsuario = async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const idG = req.geriatricoId;
@@ -343,9 +331,6 @@ exports.reactivarUsuario = async (req, res) => {
   }
 };
 
-/* =========================
-   CAMBIAR PASSWORD (SIN CAMBIOS)
-========================== */
 exports.cambiarPassword = async (req, res) => {
   try {
     const cur =
@@ -359,7 +344,7 @@ exports.cambiarPassword = async (req, res) => {
     if (next !== confirm) return res.status(400).json({ mensaje: "La confirmación no coincide" });
     if (next.length < 8) return res.status(400).json({ mensaje: "La nueva contraseña debe tener al menos 8 caracteres" });
 
-    const r = await pool.query(`SELECT contrasena FROM usuario WHERE id_usuario = $1 LIMIT 1`, [req.user.id]);
+    const r = await pool.query(`SELECT contrasena FROM public.usuario WHERE id_usuario = $1 LIMIT 1`, [req.user.id]);
     if (!r.rows.length) return res.status(404).json({ mensaje: "Usuario no encontrado" });
 
     const stored = r.rows[0].contrasena || "";
@@ -377,7 +362,7 @@ exports.cambiarPassword = async (req, res) => {
 
     const newHash = await bcrypt.hash(next, 10);
     await pool.query(
-      `UPDATE usuario SET contrasena = $1, debe_cambiar_password = false WHERE id_usuario = $2`,
+      `UPDATE public.usuario SET contrasena = $1, debe_cambiar_password = false WHERE id_usuario = $2`,
       [newHash, req.user.id]
     );
 
