@@ -161,12 +161,57 @@ const testsDisponiblesMovil = async (req, res) => {
   try {
     const idG = req.geriatricoId;
     const idU = req.user?.id;
-    if (!idG || !idU) return res.status(400).json({ error: 'Falta geriátrico o usuario en sesión' });
+    if (!idG || !idU) {
+      return res
+        .status(400)
+        .json({ error: 'Falta geriátrico o usuario en sesión' });
+    }
+
     const isAdmin = await esAdminAsync(req);
-    const { rows } = await pool.query('SELECT * FROM public.movil_tests_disponibles($1,$2,$3)', [idG, idU, isAdmin]);
-    return res.json(rows);
-  } catch (err) { return handlePgError(res, err, 'Error al obtener tests disponibles'); }
+
+    const { rows } = await pool.query(
+      'SELECT * FROM public.movil_tests_disponibles($1,$2,$3)',
+      [idG, idU, isAdmin]
+    );
+
+    // 🧠 Normalizamos la lógica de "completado" y "bloqueado" aquí
+    const data = rows.map((r) => {
+      // Campos crudos desde SQL
+      const completado = r.completado === true;
+      const puntaje = r.puntaje ?? null;
+      const ultimoAvance = r.ultimo_avance || r.ultimoAvance || null;
+
+      // En la BD puede venir "bloqueado" según intentos
+      let bloqueado = r.bloqueado === true;
+
+      // REGLA 1: Si no hay ninguna respuesta todavía, NO debe estar bloqueado
+      // (caso típico después de REINICIAR desde la web)
+      if (!completado && !ultimoAvance) {
+        bloqueado = false;
+      }
+
+      // REGLA 2: Si el test está COMPLETADO, lo tratamos como "finalizado"
+      // → no se debe poder volver a empezar desde el móvil.
+      // El botón dirá "Completado" y quedará deshabilitado.
+      if (completado) {
+        bloqueado = true;
+      }
+
+      return {
+        ...r,
+        completado,
+        puntaje,
+        ultimo_avance: ultimoAvance,
+        bloqueado,
+      };
+    });
+
+    return res.json(data);
+  } catch (err) {
+    return handlePgError(res, err, 'Error al obtener tests disponibles');
+  }
 };
+
 
 const personasConTestMovil = async (req, res) => {
   try {
