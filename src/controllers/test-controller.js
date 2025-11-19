@@ -116,65 +116,29 @@ const listarParticipantesTest = async (req, res) => {
 const marcarParticipanteCompletado = async (req, res) => {
   const idTest = parseInt(req.params.idTest, 10);
   const idAdulto = parseInt(req.params.idAdulto, 10);
-  const { completado = true } = req.body; // lo que viene del front (true / false)
+  const { completado = true } = req.body;
 
-  const cli = await pool.connect();
   try {
-    await cli.query('BEGIN');
-
-    // Validar que el test pertenece al geriátrico actual
-    const t = await cli.query(
+    const t = await pool.query(
       'SELECT 1 FROM test WHERE id_test=$1 AND id_geriatrico=$2',
       [idTest, req.geriatricoId]
     );
     if (!t.rowCount) {
-      await cli.query('ROLLBACK');
       return res.status(403).json({ error: 'Fuera del geriátrico' });
     }
 
-    // 1) Leer estado actual del participante
-    const cur = await cli.query(
-      `
-        SELECT completado
-          FROM test_participante
-         WHERE id_test = $1
-           AND id_adulto = $2
-         FOR UPDATE
-      `,
-      [idTest, idAdulto]
+    // 👇 Aquí delegamos TODO al SP
+    await pool.query(
+      'SELECT public.sp_marcar_completado($1,$2,$3)',
+      [idTest, idAdulto, !!completado]
     );
 
-    if (!cur.rowCount) {
-      await cli.query('ROLLBACK');
-      return res.status(404).json({ error: 'Participante no encontrado en este test' });
-    }
-
-    const actual = cur.rows[0].completado === true; // asegurar boolean
-
-    // 2) Si pasa de true -> false => reiniciar test
-    if (actual === true && completado === false) {
-      // SP que reinicia progreso + flags del participante
-      await cli.query(
-        'SELECT public.sp_reiniciar_participante_test($1,$2)',
-        [idTest, idAdulto]
-      );
-    } else {
-      // 3) Caso normal: solo marcar completado / en curso
-      await cli.query(
-        'SELECT public.sp_marcar_completado($1,$2,$3)',
-        [idTest, idAdulto, !!completado]
-      );
-    }
-
-    await cli.query('COMMIT');
     return res.json({ ok: true });
   } catch (err) {
-    await cli.query('ROLLBACK');
     return handlePgError(res, err, 'No se pudo actualizar el estado');
-  } finally {
-      cli.release();
   }
 };
+
 
 const obtenerProgresoParticipante = async (req, res) => {
   const idTest = parseInt(req.params.idTest, 10);
