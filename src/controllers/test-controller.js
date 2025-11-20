@@ -167,15 +167,18 @@ const obtenerProgresoParticipante = async (req, res) => {
       const r = rows?.[0];
       if (!r) return res.json(null);
 
-      // 🔹 Obtener el nombre del adulto con la función que ya tienes
+      // 🔹 Obtener el nombre del adulto desde adulto_mayor + persona
       let nombreCompleto = null;
       try {
         const qNombre = await pool.query(
-          `SELECT nombre_completo
-             FROM fn_listar_participantes_test($1)
-            WHERE id_adulto = $2
-            LIMIT 1`,
-          [idTest, idAdulto]
+          `SELECT
+             COALESCE(p.apellidos, '') || ' ' || COALESCE(p.nombres, '') AS nombre_completo
+           FROM adulto_mayor am
+           JOIN persona p ON p.id_persona = am.id_persona
+           WHERE am.id_adulto = $1
+             AND am.id_geriatrico = $2
+           LIMIT 1`,
+          [idAdulto, req.geriatricoId]
         );
         nombreCompleto = qNombre.rows[0]?.nombre_completo ?? null;
       } catch (eNombre) {
@@ -216,11 +219,11 @@ const obtenerProgresoParticipante = async (req, res) => {
 
       return res.json({
         nombre_completo: r.nombre_completo,
-        total_ejercicios: r.total_ejercicios,
-        ejercicios_respondidos: r.ejercicios_respondidos,
+        total_ejercicios: Number(r.total_ejercicios ?? 0),
+        ejercicios_respondidos: Number(r.ejercicios_respondidos ?? 0),
         porcentaje_cobertura: cobertura,
         porcentaje_avance: cobertura,
-        puntaje: null,
+        puntaje: null,                     // la función antigua no tenía puntaje
         realizado: r.completado === true,
         fecha_fin: null
       });
@@ -229,6 +232,7 @@ const obtenerProgresoParticipante = async (req, res) => {
     return handlePgError(res, err, 'Error al obtener progreso');
   }
 };
+
 
 
 const eliminarParticipante = async (req, res) => {
