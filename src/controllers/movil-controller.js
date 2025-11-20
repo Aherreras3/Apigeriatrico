@@ -152,24 +152,25 @@ const progresoPorAdulto = async (req, res) => {
       return res.status(400).json({ error: 'Parámetros inválidos' });
     }
 
-    // 🔍 Traemos todos los intentos del adulto en ese geriátrico
     const { rows } = await pool.query(
       `
       SELECT
         pt.id_progreso,
         pt.id_test,
-        t.nombre                 AS nombre_test,
         pt.fecha_inicio,
         pt.fecha_fin,
         pt.completado,
         pt.puntaje,
-        pt.cobertura
-      FROM progreso_test pt
-      JOIN test t
+        pt.cobertura,
+        -- traigo TODAS las columnas de test sin asumir nombres
+        t.*
+      FROM public.progreso_test pt
+      JOIN public.test t
         ON t.id_test = pt.id_test
       WHERE pt.id_geriatrico = $1
         AND pt.id_adulto     = $2
-      ORDER BY COALESCE(pt.fecha_fin, pt.fecha_inicio) DESC, pt.id_progreso DESC
+      ORDER BY COALESCE(pt.fecha_fin, pt.fecha_inicio) DESC,
+               pt.id_progreso DESC
       `,
       [idG, idAdulto]
     );
@@ -179,6 +180,7 @@ const progresoPorAdulto = async (req, res) => {
     return handlePgError(res, err, 'Error al obtener progreso del adulto');
   }
 };
+
 
 
 /* ================== TESTS / EJERCICIOS ================== */
