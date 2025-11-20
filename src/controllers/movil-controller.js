@@ -146,14 +146,40 @@ const resumenProgreso = async (req, res) => {
 const progresoPorAdulto = async (req, res) => {
   try {
     const idG = req.geriatricoId;
-    const idU = req.user?.id;
     const idAdulto = parseInt(req.params.idAdulto, 10);
-    if (!idG || !idU || !Number.isInteger(idAdulto)) return res.status(400).json({ error: 'Parámetros inválidos' });
-    const isAdmin = await esAdminAsync(req);
-    const { rows } = await pool.query('SELECT * FROM public.movil_progreso_por_adulto($1,$2,$3,$4)', [idG, idU, isAdmin, idAdulto]);
+
+    if (!idG || !Number.isInteger(idAdulto)) {
+      return res.status(400).json({ error: 'Parámetros inválidos' });
+    }
+
+    // 🔍 Traemos todos los intentos del adulto en ese geriátrico
+    const { rows } = await pool.query(
+      `
+      SELECT
+        pt.id_progreso,
+        pt.id_test,
+        t.nombre                 AS nombre_test,
+        pt.fecha_inicio,
+        pt.fecha_fin,
+        pt.completado,
+        pt.puntaje,
+        pt.cobertura
+      FROM progreso_test pt
+      JOIN test t
+        ON t.id_test = pt.id_test
+      WHERE pt.id_geriatrico = $1
+        AND pt.id_adulto     = $2
+      ORDER BY COALESCE(pt.fecha_fin, pt.fecha_inicio) DESC, pt.id_progreso DESC
+      `,
+      [idG, idAdulto]
+    );
+
     return res.json(rows);
-  } catch (err) { return handlePgError(res, err, 'Error al obtener progreso del adulto'); }
+  } catch (err) {
+    return handlePgError(res, err, 'Error al obtener progreso del adulto');
+  }
 };
+
 
 /* ================== TESTS / EJERCICIOS ================== */
 
