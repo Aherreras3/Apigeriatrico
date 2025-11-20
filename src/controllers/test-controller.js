@@ -158,7 +158,7 @@ const obtenerProgresoParticipante = async (req, res) => {
       return res.status(403).json({ error: 'Fuera del geriátrico' });
     }
 
-    // 1) Intentar la función nueva (detalle con cobertura + avance)
+    // 1) Intentar la función nueva (detalle con cobertura + puntaje)
     try {
       const { rows } = await pool.query(
         'SELECT * FROM public.fn_progreso_participante_detalle($1,$2)',
@@ -167,28 +167,43 @@ const obtenerProgresoParticipante = async (req, res) => {
       const r = rows?.[0];
       if (!r) return res.json(null);
 
-      return res.json({
-        // por ahora no devolvemos el nombre (te llega como "—" en el front)
-        nombre_completo: null,
+      // 🔹 Nuevo: obtener nombre_completo usando la función que ya tienes
+      let nombreCompleto = null;
+      try {
+        const qNombre = await pool.query(
+          `SELECT nombre_completo
+             FROM fn_listar_participantes_test($1)
+            WHERE id_adulto = $2
+            LIMIT 1`,
+          [idTest, idAdulto]
+        );
+        nombreCompleto = qNombre.rows[0]?.nombre_completo ?? null;
+      } catch (eNombre) {
+        // si falla, lo dejamos en null
+        nombreCompleto = null;
+      }
 
-        // 👇 OJO: aquí usamos los NOMBRES REALES de las columnas
+      return res.json({
+        nombre_completo: nombreCompleto,
+
+        // 👇 OJO: usamos los nombres reales de las columnas de la función
         total_ejercicios: Number(r.ejercicios_total ?? 0),
         ejercicios_respondidos: Number(r.ejercicios_respondidos ?? 0),
 
         porcentaje_cobertura: Number(r.cobertura ?? 0),
-        // por ahora el avance = cobertura (si luego quieres otra lógica, se cambia aquí)
+        // por ahora el avance = cobertura
         porcentaje_avance: Number(r.cobertura ?? 0),
 
         puntaje: r.puntaje == null ? null : Number(r.puntaje),
 
-        // "realizado" en base al estado_label devuelto por la función
+        // completado según estado_label
         realizado: r.estado_label === 'Completado',
 
-        // la función aún no devuelve fecha_fin → null (no se muestra en el modal)
+        // tu función de detalle no devuelve fecha_fin -> por ahora null
         fecha_fin: null
       });
     } catch (e1) {
-      // 2) Fallback: función antigua (lo de fn_progreso_participante) lo dejas igual
+      // 2) Fallback: función antigua (mantén igual que antes)
       const { rows } = await pool.query(
         'SELECT * FROM fn_progreso_participante($1,$2)',
         [idTest, idAdulto]
@@ -216,6 +231,7 @@ const obtenerProgresoParticipante = async (req, res) => {
     return handlePgError(res, err, 'Error al obtener progreso');
   }
 };
+
 
 
 
