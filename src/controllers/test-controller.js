@@ -146,9 +146,17 @@ const obtenerProgresoParticipante = async (req, res) => {
 
   try {
     // Validaciones de tenant
-    const t = await pool.query('SELECT 1 FROM test WHERE id_test=$1 AND id_geriatrico=$2', [idTest, req.geriatricoId]);
-    const a = await pool.query('SELECT 1 FROM adulto_mayor WHERE id_adulto=$1 AND id_geriatrico=$2', [idAdulto, req.geriatricoId]);
-    if (!t.rowCount || !a.rowCount) return res.status(403).json({ error: 'Fuera del geriátrico' });
+    const t = await pool.query(
+      'SELECT 1 FROM test WHERE id_test=$1 AND id_geriatrico=$2',
+      [idTest, req.geriatricoId]
+    );
+    const a = await pool.query(
+      'SELECT 1 FROM adulto_mayor WHERE id_adulto=$1 AND id_geriatrico=$2',
+      [idAdulto, req.geriatricoId]
+    );
+    if (!t.rowCount || !a.rowCount) {
+      return res.status(403).json({ error: 'Fuera del geriátrico' });
+    }
 
     // 1) Intentar la función nueva (detalle con cobertura + avance)
     try {
@@ -160,22 +168,36 @@ const obtenerProgresoParticipante = async (req, res) => {
       if (!r) return res.json(null);
 
       return res.json({
-        nombre_completo: r.nombre_completo,
-        total_ejercicios: r.total_ejercicios,
-        ejercicios_respondidos: r.ejercicios_respondidos,
-        porcentaje_cobertura: Number(r.porcentaje_cobertura ?? 0),
-        porcentaje_avance: Number(r.porcentaje_avance ?? r.porcentaje_cobertura ?? 0),
+        // por ahora no devolvemos el nombre (te llega como "—" en el front)
+        nombre_completo: null,
+
+        // 👇 OJO: aquí usamos los NOMBRES REALES de las columnas
+        total_ejercicios: Number(r.ejercicios_total ?? 0),
+        ejercicios_respondidos: Number(r.ejercicios_respondidos ?? 0),
+
+        porcentaje_cobertura: Number(r.cobertura ?? 0),
+        // por ahora el avance = cobertura (si luego quieres otra lógica, se cambia aquí)
+        porcentaje_avance: Number(r.cobertura ?? 0),
+
         puntaje: r.puntaje == null ? null : Number(r.puntaje),
-        realizado: r.completado === true,   // 👈 etiqueta amigable para el front
-        fecha_fin: r.fecha_fin ?? null
+
+        // "realizado" en base al estado_label devuelto por la función
+        realizado: r.estado_label === 'Completado',
+
+        // la función aún no devuelve fecha_fin → null (no se muestra en el modal)
+        fecha_fin: null
       });
     } catch (e1) {
-      // 2) Fallback: función antigua (solo "porcentaje" total)
+      // 2) Fallback: función antigua (lo de fn_progreso_participante) lo dejas igual
       const { rows } = await pool.query(
         'SELECT * FROM fn_progreso_participante($1,$2)',
         [idTest, idAdulto]
       );
-      if (!rows.length) return res.status(404).json({ error: 'No se encontró progreso para este participante.' });
+      if (!rows.length) {
+        return res
+          .status(404)
+          .json({ error: 'No se encontró progreso para este participante.' });
+      }
       const r = rows[0];
 
       const cobertura = Number(r.porcentaje ?? 0);
@@ -183,10 +205,10 @@ const obtenerProgresoParticipante = async (req, res) => {
         nombre_completo: r.nombre_completo,
         total_ejercicios: r.total_ejercicios,
         ejercicios_respondidos: r.ejercicios_respondidos,
-        porcentaje_cobertura: cobertura,  // 👈 mapeamos porcentaje -> cobertura
-        porcentaje_avance: cobertura,     // 👈 sin la función nueva, usamos el mismo valor
-        puntaje: null,                    // no disponible en la función antigua
-        realizado: r.completado === true, // 👈 renombramos por consistencia visual
+        porcentaje_cobertura: cobertura,
+        porcentaje_avance: cobertura,
+        puntaje: null,
+        realizado: r.completado === true,
         fecha_fin: null
       });
     }
@@ -194,6 +216,7 @@ const obtenerProgresoParticipante = async (req, res) => {
     return handlePgError(res, err, 'Error al obtener progreso');
   }
 };
+
 
 
 const eliminarParticipante = async (req, res) => {
